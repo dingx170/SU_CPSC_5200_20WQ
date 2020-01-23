@@ -90,6 +90,32 @@ namespace restapi.Models
                         Reference = $"/timesheets/{UniqueIdentifier}/lines"
                     });
 
+                    // delete draft
+                    links.Add(new ActionLink()
+                    {
+                        Method = Method.Delete,
+                        Relationship = ActionRelationship.Delete,
+                        Reference = $"/timesheets/{UniqueIdentifier}/deletion"
+                    });
+
+                    // replace a line
+                    links.Add(new ActionLink()
+                    {
+                        Method = Method.Post,
+                        Type = ContentTypes.TimesheetLine,
+                        Relationship = ActionRelationship.ReplaceLine,
+                        Reference = $"/timesheets/{UniqueIdentifier}/replaceLine/(add a lineId)"
+                    });
+                    
+                    // update a line
+                    links.Add(new ActionLink()
+                    {
+                        Method = Method.Patch,
+                        Type = ContentTypes.TimesheetLine,
+                        Relationship = ActionRelationship.UpdateLine,
+                        Reference = $"/timesheets/{UniqueIdentifier}/updateLine/(add a lineId)"
+                    });
+
                     break;
 
                 case TimecardStatus.Submitted:
@@ -116,6 +142,14 @@ namespace restapi.Models
                         Relationship = ActionRelationship.Approve,
                         Reference = $"/timesheets/{UniqueIdentifier}/approval"
                     });
+                    
+                    // Reverse to draft
+                    links.Add(new ActionLink()
+                    {
+                        Method = Method.Post,
+                        Relationship = ActionRelationship.Reverse,
+                        Reference = $"/timesheets/{UniqueIdentifier}/reversal"
+                    });
 
                     break;
 
@@ -124,7 +158,14 @@ namespace restapi.Models
                     break;
 
                 case TimecardStatus.Cancelled:
-                    // terminal state, nothing possible here
+                    // terminal state, only allows deletion
+                    links.Add(new ActionLink()
+                    {
+                        Method = Method.Delete,
+                        Relationship = ActionRelationship.Delete,
+                        Reference = $"/timesheets/{UniqueIdentifier}/deletion"
+                    });
+
                     break;
             }
 
@@ -188,6 +229,23 @@ namespace restapi.Models
                 .Any(l => l.UniqueIdentifier == lineId);
         }
 
+        public void RemoveLine(Guid lineId)
+        {   
+            TimecardLine lineToRemove = Lines.FirstOrDefault(l => l.UniqueIdentifier == lineId);
+
+            Lines.Remove(lineToRemove);
+
+            return;
+        }
+
+        public void UpdateLine(Guid lineId, DocumentLine documentLine)
+        {   
+            TimecardLine lineToUpdate = Lines.FirstOrDefault(l => l.UniqueIdentifier == lineId);
+
+            lineToUpdate.Update(documentLine);
+
+            return;
+        }
 
         public override string ToString()
         {

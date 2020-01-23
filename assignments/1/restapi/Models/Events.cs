@@ -73,4 +73,15 @@ namespace restapi.Models
             return PublicJsonSerializer.SerializeObjectIndented(this);
         }
     }
+
+    public class Reversal : Event
+    {
+        [BsonIgnore]
+        public int Reverser { get => Person; set { Person = value; } }
+
+        public override string ToString()
+        {
+            return PublicJsonSerializer.SerializeObjectIndented(this);
+        }
+    }
 }

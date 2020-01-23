@@ -20,4 +20,18 @@ namespace restapi.Models
 
         public string Message { get => "No state transition of requested type present in timecard"; }
     }
+
+    public class InconsistentPersonError
+    {
+        public int ErrorCode { get => 103; }
+
+        public string Message { get => "Inconsistent person found in transitions"; }
+    }
+
+    public class InvalidSubmitterError
+    {
+        public int ErrorCode { get => 104; }
+
+        public string Message { get => "Submitter not valid for current timecard"; }
+    }
 }

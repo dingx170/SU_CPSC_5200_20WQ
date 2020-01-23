@@ -68,7 +68,7 @@ namespace restapi.Controllers
             return timecard;
         }
 
-        [HttpDelete("{id:guid}")]
+        [HttpDelete("{id:guid}/deletion")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
         public IActionResult Delete(Guid id)
@@ -146,6 +146,71 @@ namespace restapi.Controllers
             }
         }
 
+        // Replace a line on timesheet
+        [HttpPost("{id:guid}/ReplaceLine/{lineId:guid}")]
+        [Produces(ContentTypes.TimesheetLine)]
+        [ProducesResponseType(typeof(TimecardLine), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidStateError), 409)]
+        public IActionResult ReplaceLine(Guid id, Guid lineId, [FromBody] DocumentLine documentLine)
+        {
+            logger.LogInformation($"Looking for timesheet {id}");
+            logger.LogInformation($"Looking for line {lineId}");
+
+            Timecard timecard = repository.Find(id);
+
+            if (timecard != null && timecard.HasLine(lineId))
+            {
+                if (timecard.Status != TimecardStatus.Draft)
+                {
+                    return StatusCode(409, new InvalidStateError() { });
+                }
+                var newLine = timecard.AddLine(documentLine);
+
+                timecard.RemoveLine(lineId);
+
+                repository.Update(timecard);
+
+                return Ok(newLine);
+            }
+            else
+            {
+                return NotFound();
+            }
+        }
+
+        // Update a line on timesheet
+        [HttpPatch("{id:guid}/UpdateLine/{lineId:guid}")]
+        [Produces(ContentTypes.TimesheetLine)]
+        [ProducesResponseType(typeof(TimecardLine), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidStateError), 409)]
+        public IActionResult UpdateLine(Guid id, Guid lineId, [FromBody] DocumentLine documentLine)
+        {
+            logger.LogInformation($"Looking for timesheet {id}");
+            logger.LogInformation($"Looking for line {lineId}");
+
+            Timecard timecard = repository.Find(id);
+
+            if (timecard != null && timecard.HasLine(lineId))
+            {
+                if (timecard.Status != TimecardStatus.Draft)
+                {
+                    return StatusCode(409, new InvalidStateError() { });
+                }
+
+                timecard.UpdateLine(lineId, documentLine);
+
+                repository.Update(timecard);
+
+                return Ok();
+            }
+            else
+            {
+                return NotFound();
+            }
+        }
+
         [HttpGet("{id:guid}/transitions")]
         [Produces(ContentTypes.Transitions)]
         [ProducesResponseType(typeof(IEnumerable<Transition>), 200)]
@@ -172,6 +237,7 @@ namespace restapi.Controllers
         [ProducesResponseType(404)]
         [ProducesResponseType(typeof(InvalidStateError), 409)]
         [ProducesResponseType(typeof(EmptyTimecardError), 409)]
+        [ProducesResponseType(typeof(InconsistentPersonError), 409)]
         public IActionResult Submit(Guid id, [FromBody] Submittal submittal)
         {
             logger.LogInformation($"Looking for timesheet {id}");
@@ -191,6 +257,11 @@ namespace restapi.Controllers
                 }
 
                 var transition = new Transition(submittal, TimecardStatus.Submitted);
+                
+                if (timecard.Employee != transition.Event.Person) 
+                {
+                    return StatusCode(409, new InconsistentPersonError() { });
+                }
 
                 logger.LogInformation($"Adding submittal {transition}");
 
@@ -245,6 +316,7 @@ namespace restapi.Controllers
         [ProducesResponseType(404)]
         [ProducesResponseType(typeof(InvalidStateError), 409)]
         [ProducesResponseType(typeof(EmptyTimecardError), 409)]
+        [ProducesResponseType(typeof(InconsistentPersonError), 409)]
         public IActionResult Cancel(Guid id, [FromBody] Cancellation cancellation)
         {
             logger.LogInformation($"Looking for timesheet {id}");
@@ -259,6 +331,11 @@ namespace restapi.Controllers
                 }
 
                 var transition = new Transition(cancellation, TimecardStatus.Cancelled);
+
+                if (timecard.Status == TimecardStatus.Draft && timecard.Employee != transition.Event.Person) 
+                {
+                    return StatusCode(409, new InconsistentPersonError() { });
+                }
 
                 logger.LogInformation($"Adding cancellation transition {transition}");
 
@@ -381,6 +458,7 @@ namespace restapi.Controllers
         [ProducesResponseType(404)]
         [ProducesResponseType(typeof(InvalidStateError), 409)]
         [ProducesResponseType(typeof(EmptyTimecardError), 409)]
+        [ProducesResponseType(typeof(InvalidSubmitterError), 409)]
         public IActionResult Approve(Guid id, [FromBody] Approval approval)
         {
             logger.LogInformation($"Looking for timesheet {id}");
@@ -395,6 +473,11 @@ namespace restapi.Controllers
                 }
 
                 var transition = new Transition(approval, TimecardStatus.Approved);
+
+                if (timecard.Employee == transition.Event.Person) 
+                {
+                    return StatusCode(409, new InvalidSubmitterError() { });
+                }
 
                 logger.LogInformation($"Adding approval transition {transition}");
 
@@ -436,6 +519,46 @@ namespace restapi.Controllers
                 {
                     return StatusCode(409, new MissingTransitionError() { });
                 }
+            }
+            else
+            {
+                return NotFound();
+            }
+        }
+
+        [HttpPost("{id:guid}/reversal")]
+        [Produces(ContentTypes.Transition)]
+        [ProducesResponseType(typeof(Transition), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidStateError), 409)]
+        [ProducesResponseType(typeof(InconsistentPersonError), 409)]
+        public IActionResult Reverse(Guid id, [FromBody] Reversal reversal)
+        {
+            logger.LogInformation($"Looking for timesheet {id}");
+
+            Timecard timecard = repository.Find(id);
+
+            if (timecard != null)
+            {
+                if (timecard.Status != TimecardStatus.Submitted)
+                {
+                    return StatusCode(409, new InvalidStateError() { });
+                }
+
+                var transition = new Transition(reversal, TimecardStatus.Draft);
+
+                if (timecard.Employee != transition.Event.Person) 
+                {
+                    return StatusCode(409, new InconsistentPersonError() { });
+                }
+
+                logger.LogInformation($"Reversing to draft {transition}");
+
+                timecard.Transitions.Add(transition);
+
+                repository.Update(timecard);
+
+                return Ok(transition);
             }
             else
             {
